@@ -1,0 +1,14 @@
+[tool.pylint.messages_control]
+disable = [
+    "missing-module-docstring", 
+    "missing-function-docstring", 
+    "line-too-long",
+    "pointless-string-statement",
+    "dangerous-default-value",
+    "unnecessary-lambda-assignment"
+]
+
+[tool.isort]
+src_paths = ["scraby", "tests"]
+
+
