@@ -3,7 +3,7 @@ import re
 import typing as t
 from enum import Enum, EnumType
 
-from lxml import html
+from lxml import etree, html
 
 Struct = t.Union[dict, list, tuple]
 
@@ -17,14 +17,28 @@ def prepare(s: str) -> str:
     
     """
     for k,v in {
-        "\t": "", r"\n[ ]+\n": "\n", r"\n": "", r"\ [\ ]+": " ", r"\>[ ]+\<": "><"
+        "\t": "", 
+        r"\n[ ]+\n": "\n", 
+        r"\n": " ", 
+        r"\ [\ ]+": " ", 
+        r"\>[ ]+\<": "><"
     }.items():
         s = re.sub(k, v, s)
+    # Remove comments
+    s = re.sub(r'\<\!\-\-.*?(?=-->)\-\-\>', '', s, re.MULTILINE)
+    # Remove empty attributes: attr=""
+    s = re.sub(r'[^= ]+(\=\"\"[ ]?)', '', s)
     for x in re.finditer(r"\>([^\<]+)\<\/", s):
         s = s[:x.span()[0]] +\
             x.group().replace(" ", " ").replace("\xa0", " ") +\
             s[x.span()[1]:]
-    return s
+
+    return html.tostring(
+        html.fromstring(
+            s, parser=etree.HTMLParser(remove_comments=True)
+        ),
+        encoding='unicode'
+    )
 
 
 def get_tag(
@@ -44,20 +58,43 @@ def get_tag(
         str | None: tag string or nothing
 
     """
+    attrs: list[str] = []
+    for k,v in {
+        **e.attrib,
+        "__prefix__": e.prefix or "", 
+        "__text__": e.text or "", 
+        "__tail__": e.tail or "",
+    }.items():
+        if not f(v):
+            continue
+        if v or k.startswith('__'):
+            for x in {'"': "&quot;", "'": "&apos;", "`": "&#x60;"}.items():
+                v = v.replace(*x)
+            attrs.append(str(k) + '=`%s`' % v)
+        else:
+            attrs.append(str(k))
+    s = e.tag + ' ' + " ".join(attrs)
+    if 'ulclass' in s:
+        print([e.tag, s])
+    return s
+        
+
     #  TODO: move isinstance check to pydantic check
-    return (
-        e.tag + ' ' + " ".join("%s%s" % (
-            k, ('=`%s`' % v.replace('"', "&quot;").replace("'", "&apos;")) if (
-                v or k.startswith('__')
-            ) else ""
-        ) for k,v in {
-            **e.attrib,
-            "__prefix__": e.prefix or "", 
-            "__text__": e.text or "", 
-            "__tail__": e.tail or ""
-        }.items() if f(v or ''))
-        #  WARNING: possibly not use filter because of data loss
-    ).strip(' ') if isinstance(e, html.HtmlElement) else None
+    # s = (
+    #     e.tag + ' ' + " ".join("%s%s" % (
+    #         k, ('=`%s`' % v.replace('"', "&quot;").replace("'", "&apos;").replace("`", "&#x60;")) if (v or k.startswith('__')) else ""
+    #     ) for k,v in {
+    #         **e.attrib,
+    #         "__prefix__": e.prefix or "", 
+    #         "__text__": e.text or "", 
+    #         "__tail__": e.tail or ""
+    #     }.items() if f(v)
+    #     )
+    #     #  WARNING: possibly not use filter because of data loss
+    # ).strip(' ') if isinstance(e, html.HtmlElement) else None
+    # if 'ulclass' in s:
+    #     print(s)
+    # return s
 
 
 def lxml2json(
@@ -101,7 +138,8 @@ def lxml2json(
 
     return _recurse(
         html_or_str if isinstance(html_or_str, html.HtmlElement) else html.fromstring(
-            prepare(html_or_str)
+            prepare(html_or_str),
+            # parser=etree.HTMLParser(remove_comments=True)
         )
     )
 
@@ -124,8 +162,11 @@ def json2lxml(d: t.Union[str, Struct]) -> html.HtmlElement:
             for k,v in data.items():
                 # Each tag has __prefix, __text & __tail attrs to be removed
                 try:
+                    # Get back quotes, apostrophe & backquote
                     k = k.replace('&quot;', '"').replace('&apos;', "'")
-                    prefix, text, tail = re.findall(r'\_\_[^ =]+\_\_\=\`([^\`]*)\`', k)
+                    prefix, text, tail = [x.replace('&#x60;', "`") for x in \
+                        re.findall(r'\_\_[^ =]+\_\_\=\`([^\`]*)\`', k)
+                    ]
                     k = re.sub(r'\_\_[^ =]+\_\_\=\`[^\`]*\`', "", k).rstrip(' ')
                 except:
                     prefix, text, tail = [""]*3
@@ -296,6 +337,8 @@ class HtmlTag(Enum):
     VIDEO = 'video'
     WBR = 'wbr'
     XMP = 'xmp'
+
+    #  TODO: skip on missing member
 
     @classmethod
     def values(cls) -> list[str]:

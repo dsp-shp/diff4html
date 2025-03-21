@@ -1,12 +1,16 @@
 import os
+import re
 import typing as t
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
 import requests
+import urllib3
 from diff4html.html import get_tag, json2lxml, lxml2json, prepare
 from lxml import etree, html
+
+urllib3.disable_warnings()
 
 
 @dataclass
@@ -22,25 +26,20 @@ class ConvertTest:
 
 # Check if source code can be properly converted to json & backwards
 @pytest.mark.parametrize("case", [
-    ConvertTest(x, x) for x in [
-            "https://example.org",
-            "https://2ch.hk/b/res/317830044.html"
-        ]
-    ], ids=lambda x: x.id
-)
+    ConvertTest(x, f"https://{x}") for x in [
+        "example.org",
+        "2ch.hk",
+        "muztorg.ru",
+        "wikipedia.org",
+        "dtf.ru",
+        "jupyter-server.readthedocs.io",
+    ]
+], ids=lambda x: x.id)
 def test_convert(case):
-    r = requests.get(case.url, verify=False)
-    if not r.ok:
-        raise Exception("cannot get HTML source code")
+    _ = lambda x: html.tostring(x.xpath('//body')[0], encoding='unicode')
 
-    l_text = html.tostring(
-        json2lxml(lxml2json(r.text)).xpath('//body')[0],
-        encoding='unicode'
-    )
+    r = requests.get(case.url, timeout=60)
+    r.raise_for_status()
 
-    c_text = prepare(html.tostring(
-        html.fromstring(prepare(r.text)).xpath('//body')[0],
-        encoding='unicode'
-    ))
-
-    assert l_text == c_text
+    #  TODO: move as warning function to diff4html.html module
+    assert _(json2lxml(lxml2json(r.text))) == _(html.fromstring(prepare(r.text)))
