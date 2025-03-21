@@ -5,7 +5,7 @@ from setuptools import find_packages, setup
 long_description = open("README.md", "r", -1, "utf8").read() if path.exists('README.md') else ""
 
 setup(
-    name="ht2dict",
+    name="diff4html",
     version="0.0.0",
     author="Ivan Derkach",
     author_email="dsp_shp@icloud.com",
@@ -14,7 +14,7 @@ setup(
     long_description_content_type="text/markdown",
     license="MIT",
     license_files=("LICENSE.txt",),
-    url="https://github.com/dsp-shp/ht2dict",
+    url="https://github.com/dsp-shp/diff4html",
     packages=find_packages(exclude=["tests", "tests.*"]),
     package_data={"": ["examples/**"]},
     python_requires=">=3.7",
@@ -26,6 +26,7 @@ setup(
             "mypy",
             "pylint",
             "pytest",
+            "notebook"
         ],
     },
     classifiers=[

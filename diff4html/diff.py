@@ -5,7 +5,7 @@ from collections import UserDict, UserList
 from textwrap import shorten
 from uuid import uuid4
 
-from ht2dict.html import json2lxml, lxml2json, repl_spaces
+from diff4html.html import json2lxml, lxml2json, prepare
 from lxml import html
 
 
@@ -46,7 +46,7 @@ class HtmlDict(UserDict, object):
         if len(args) == 1 and isinstance(args[0], str):
             self._source = args[0]
             args, kwargs = (), lxml2json(
-                html.fromstring(repl_spaces(self._source)).xpath('//body')[0]
+                html.fromstring(prepare(self._source)).xpath('//body')[0]
             )
         else:
             self._source = None
