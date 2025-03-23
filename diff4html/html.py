@@ -1,7 +1,7 @@
 import json
 import re
 import typing as t
-from enum import Enum, EnumType
+from enum import Enum
 
 from lxml import etree, html
 
@@ -9,53 +9,41 @@ Struct = t.Union[dict, list, tuple]
 
 
 def prepare(s: str) -> str:
-    """ Replace whitespaces
-
-    Function used to replace all whitespaces (and '\xa0' too) in HTML string by
-    Braille Blank (U+2800). Otherwise there will be troubles with comparing
-    tokens in htmldiff function.
+    """ Prepare HMTL source string
+    
+    Remove all new lines, empty attribute values & redundant spaces and replace
+    all whitespaces (and '\xa0' too) in HTML string with Braille Blank (U+2800). 
+    Otherwise there will be troubles with comparing tokens in htmldiff function,
+    which actually is not used anymore, lol.
     
     """
-    for k,v in {
-        "\t": "", 
-        r"\n[ ]+\n": "\n", 
-        r"\n": " ", 
-        r"\ [\ ]+": " ", 
-        r"\>[ ]+\<": "><"
-    }.items():
-        s = re.sub(k, v, s)
-    # Remove comments
-    s = re.sub(r'\<\!\-\-.*?(?=-->)\-\-\>', '', s, re.MULTILINE)
-    # Remove empty attributes: attr=""
-    s = re.sub(r'[^= ]+(\=\"\"[ ]?)', '', s)
-    for x in re.finditer(r"\>([^\<]+)\<\/", s):
-        s = s[:x.span()[0]] +\
-            x.group().replace(" ", " ").replace("\xa0", " ") +\
-            s[x.span()[1]:]
+    # remove new lines, empty attribute values & gaps between tags
+    s = s.replace('\n', '')
+    s = s.replace('=""', '')
+    s = re.sub(re.compile(r"\>[\ ]*\<"), "><", s)
+    # replace \xa0
+    for x in re.finditer(r"\>([^\<]+)\<", s):
+        y = x.group()
+        y = re.sub(re.compile(r"\>[\ ]*\<"), "><", y)
+        y = y.replace(" ", " ").replace("\xa0", " ")
+        s = s[:x.span()[0]] + y + s[x.span()[1]:]
 
     return html.tostring(
-        html.fromstring(
-            s, parser=etree.HTMLParser(remove_comments=True)
-        ),
+        html.fromstring(s, parser=etree.HTMLParser(remove_comments=True)),
         encoding='unicode'
     )
 
 
 def get_tag(
     e: html.HtmlElement,
-    f: t.Callable = lambda x: True # len(x) <= 500
+    f: t.Callable = lambda x: True
 ) -> t.Optional[str]:
     """ Get tag string
 
     Construct full tag str with all tag' parameters from lxml.HtmlElement &
-    filter them by some func. Use backticks for building parameters' part.
-
-    Args:
-        e: some HTML tag
-        f: func applied in filter
-
-    Returns:
-        str | None: tag string or nothing
+    filter them by some func. Use backticks for attributes' values, underscores
+    for special prefix, text & tail parameters & replace quotes, apostrophe and
+    backticks inside values with HTML codes.
 
     """
     attrs: list[str] = []
@@ -70,31 +58,13 @@ def get_tag(
         if v or k.startswith('__'):
             for x in {'"': "&quot;", "'": "&apos;", "`": "&#x60;"}.items():
                 v = v.replace(*x)
-            attrs.append(str(k) + '=`%s`' % v)
+            attrs.append(str(k) + f"=`{v}`")
         else:
             attrs.append(str(k))
     s = e.tag + ' ' + " ".join(attrs)
     if 'ulclass' in s:
         print([e.tag, s])
     return s
-        
-
-    #  TODO: move isinstance check to pydantic check
-    # s = (
-    #     e.tag + ' ' + " ".join("%s%s" % (
-    #         k, ('=`%s`' % v.replace('"', "&quot;").replace("'", "&apos;").replace("`", "&#x60;")) if (v or k.startswith('__')) else ""
-    #     ) for k,v in {
-    #         **e.attrib,
-    #         "__prefix__": e.prefix or "", 
-    #         "__text__": e.text or "", 
-    #         "__tail__": e.tail or ""
-    #     }.items() if f(v)
-    #     )
-    #     #  WARNING: possibly not use filter because of data loss
-    # ).strip(' ') if isinstance(e, html.HtmlElement) else None
-    # if 'ulclass' in s:
-    #     print(s)
-    # return s
 
 
 def lxml2json(
@@ -123,9 +93,13 @@ def lxml2json(
 
         # if all inside tags are unique – it's a single dict, otherwise – list
         if len({
-            get_tag(x) for x in children if x.tag not in ignore and not isinstance(x, html.HtmlComment)
+            get_tag(x) for x in children if (
+                x.tag not in ignore and not isinstance(x, html.HtmlComment)
+            )
         }) == len([
-            x for x in children if x.tag not in ignore and not isinstance(x, html.HtmlComment)
+            x for x in children if (
+                x.tag not in ignore and not isinstance(x, html.HtmlComment)
+            )
         ]):
             e_data = {}
             for x in children:
@@ -138,8 +112,7 @@ def lxml2json(
 
     return _recurse(
         html_or_str if isinstance(html_or_str, html.HtmlElement) else html.fromstring(
-            prepare(html_or_str),
-            # parser=etree.HTMLParser(remove_comments=True)
+            prepare(html_or_str)
         )
     )
 
@@ -160,10 +133,11 @@ def json2lxml(d: t.Union[str, Struct]) -> html.HtmlElement:
         elif isinstance(data, dict):
             _data = []
             for k,v in data.items():
-                # Each tag has __prefix, __text & __tail attrs to be removed
+                # each tag has __(prefix|text|tail)__ attrs to be removed
                 try:
-                    # Get back quotes, apostrophe & backquote
-                    k = k.replace('&quot;', '"').replace('&apos;', "'")
+                    # get back quotes, apostrophe & backquote
+                    for x in {'&quot;': '"', '&apos;': "'"}.items():
+                        k = k.replace(*x)
                     prefix, text, tail = [x.replace('&#x60;', "`") for x in \
                         re.findall(r'\_\_[^ =]+\_\_\=\`([^\`]*)\`', k)
                     ]
@@ -188,17 +162,33 @@ def json2lxml(d: t.Union[str, Struct]) -> html.HtmlElement:
     # return back all doublequotes (were replaced with backtick)
     for x in re.finditer(r'[^\_ =]+\=(\`[^\`]*\`)', s):
         if "&quot;" in x.group():
+            # use apostrophe if doublequote found inside attr
             s = s.replace(x.group(), x.group().replace('`', "'"))
             continue
         s = s.replace(x.group(), x.group().replace('`', '\\"'))
-    
-    #  TODO: replace whitespaces on Braile Blank maybe?
 
     return html.fromstring(_recurse(json.loads(s)))
 
 
+def validate(s: str) -> bool:
+    """ Validate HTML source 
+
+    Check if page code after lxml2json & json2lxml steps will return the same 
+    lxml representation as if it was processed by lxml only.
+
+    """
+    _ = lambda x: html.tostring(x, encoding='unicode')
+    return _(json2lxml(lxml2json(s))) == _(html.fromstring(prepare(s)))
+
+
+#  TODO: possibly remove this enum?
 class HtmlTag(Enum):
-    """ Enumeration of HTML tags """
+    """ Enumeration of HTML tags 
+
+    Class can also handle tags not enlisted below with overriden _missing_ class 
+    method.
+
+    """
     ABBREVIATION = 'abbr'
     ACRONYM = 'acronym'
     ADDRESS = 'address'
@@ -338,14 +328,22 @@ class HtmlTag(Enum):
     WBR = 'wbr'
     XMP = 'xmp'
 
-    #  TODO: skip on missing member
-
     @classmethod
     def values(cls) -> list[str]:
+        """ ... """
         return [x.value for x in cls]
+
+    @classmethod
+    def _missing_(cls, value) -> t.Self:
+        # return new object on unknown tag
+        unknown_tag = object.__new__(cls)
+        unknown_tag._name_ = str(value).upper()
+        unknown_tag._value_ = value
+        return unknown_tag
 
     @property
     def single(self) -> bool:
+        """ Check if tag is single & doesn't need an ending tag """
         return self.value in {
             "area", 
             "base", 

@@ -46,7 +46,7 @@ class HtmlDict(UserDict, object):
         if len(args) == 1 and isinstance(args[0], str):
             self._source = args[0]
             args, kwargs = (), lxml2json(
-                html.fromstring(prepare(self._source)).xpath('//body')[0]
+                html.fromstring(prepare(self._source))#.xpath('//body')[0]
             )
         else:
             self._source = None
@@ -71,7 +71,10 @@ class HtmlDict(UserDict, object):
 
     def __repr__(self) -> str:
         """ Print object """
-        return shorten(json.dumps(self.data, ensure_ascii=False), width=500)
+        return "%s(%s)" % (
+            self.__class__.__name__,
+            shorten(json.dumps(self.data, ensure_ascii=False), width=500)
+        )
 
     def __add__(self, other: HtmlDiff) -> t.Self:
         """ Apply HtmlDiff delta to HtmlDict """
@@ -212,7 +215,7 @@ def diff(
         
         """
 
-        if not e1 and not e2:
+        if e1 is None and e2 is None:
             return
 
         # Сохраним словарь в корне рекурсии
@@ -255,7 +258,7 @@ def diff(
 
             _e2_items = {k:v for k,v in e2.items() if k not in {*e1, *_keys}}
             for k,v in _e2_items.items():
-                _recurse(None, v, path=[*path, e2, json.dumps({k:v}, ensure_ascii=False)])
+                _recurse(None, v or '', path=[*path, e2, json.dumps({k:v}, ensure_ascii=False)])
             return
 
         # If compare two strings
@@ -274,9 +277,8 @@ def diff(
             e1_dump = json.dumps(e1, ensure_ascii=False) if e1 else None
 
             # Если было добавлено
-            if e1 and not e2:
-                # print(path[-2:])
-                # Для списков при добавлении необходимо сослаться на предыдущий элемент
+            if e1 is not None and e2 is None:
+                # Для списков при добавлении необходимо сослаться на предыдущий элем
                 if isinstance(path[-2], list):
                     offset, length = find(path[0], path[-2], len(path[-2])-1)
                 elif isinstance(path[-2], dict):
@@ -285,28 +287,20 @@ def diff(
                     except:
                         _is_dict = False
                     if not _is_dict:
-                    # try:
                         __e = path[-2][path[-1]]
                         path += [__e, [*__e][-1]]
                         offset, length = find(path[0], *path[-2:])
-
-                    # except:
-                    #     pass
-                # print('added: (%s:%s) %s' % (offset+length, offset+length, json.dumps(e1, ensure_ascii=False)))
                 _d = (offset+length, offset+length, None, e1_dump)
 
             # Если было заменено
-            elif e1 and e2:
+            elif e1 is not None and e2 is not None:
                 if isinstance(path[-2], dict):
                     if re.match(r'\{\"[^\"]+\":.+', e1_dump):
                         e1_dump = e1_dump[1:-1]
-                # print(path[-2:])
-                # print('replaced: (%s:%s) %s with %s' % (offset, offset+length, _s, json.dumps(e1, ensure_ascii=False)))
                 _d = (offset, offset+length, _s, e1_dump)
 
             # Если было удалено
-            elif not e1 and e2:
-                # print('removed: (%s:%s) %s' % (offset, offset+length, _s))
+            elif e1 is None and e2 is not None:
                 _d = (offset, offset+length, _s, None)
 
             if _d:
@@ -324,33 +318,32 @@ def diff(
 def apply_diff(html_or_str: t.Union[str, HtmlDict], changes: HtmlDiff) -> str:
     """ Apply changes
 
-    Args:
-        s: current version in string dict format
-        changes: list of changes
+    Restore page snapshot with source code & delta.
 
-    Returns:
-        str: page snapshot at a specific time
-    
     """
     s: str = str(html_or_str)
 
     # check if specific change is in dict scope - inside
-    _in_dict: t.Callable = lambda x: _in_dict(_) if (_ := re.sub(r'\{[^\}\{]+\}', '', x)) != x else [*re.findall(
+    _in_dict: t.Callable = lambda x: _in_dict(_) if (
+        _ := re.sub(r'\{[^\}\{]+\}', '', x)
+    ) != x else [*re.findall(
         r'[\}|\(|\)|\]|\ \,]\}+',
         x.replace(' ', '').replace(',', '')
     ), ''][0].startswith('}')
 
-    for i, _, cur, res in changes.data[::-1]:
+    for i, j, cur, res in changes.data[::-1]:
         # when removed in update
-        if cur is None:
-            res = ', ' + res
+        if (s[:i].endswith(', ') or s[i:].startswith(', ')) and res is None:
             i -= 2
         # if need to trim ", " from left (when added in update)
-        if s[i:].startswith(', ') and res is None:
+        if cur is None:
             # if cur is a dict unpacked in parent structure - trim curly braces
-            if isinstance(eval(cur), dict) and _in_dict(s[i:]):
-                cur = cur[1:-1]
-            cur = ', ' + cur
-        s = s[:i] + (res or '') + s[(i + len(cur or '')):]
+            try:
+                if isinstance(json.loads(res), dict) and _in_dict(s[i:]):
+                    res = res[1:-1]
+            except:
+                pass
+            res = ', ' + res
+        s = s[:i] + (res or '') + s[j:]
 
     return s
