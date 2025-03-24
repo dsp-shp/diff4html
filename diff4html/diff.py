@@ -42,15 +42,15 @@ class HtmlDict(UserDict, object):
     _source: t.Optional[str]
     """ Source string used to init object """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, xpath: t.Optional[str] = None, **kwargs) -> None:
         if len(args) == 1 and isinstance(args[0], str):
             self._source = args[0]
-            args, kwargs = (), lxml2json(
-                html.fromstring(prepare(self._source))#.xpath('//body')[0]
-            )
+            args, source = (), html.fromstring(prepare(self._source))
+            if xpath:
+                source = source.xpath(xpath)[0]
         else:
             self._source = None
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, **lxml2json(source))
 
     def __eq__(self, other: t.Self) -> bool:
         if not isinstance(other, self.__class__):
@@ -157,16 +157,17 @@ def find(
                     items.append(_e)
                 i += 1
             return items, length
-        elif isinstance(e, dict):
+
+        if isinstance(e, dict):
             keys = [*e.keys()]
             while i <= len(keys) - 1 and not found:
-                # если различаются ключи
+                # if keys differ
                 if e is end_e and end_i and keys[i] == end_i:
                     found = True
-                    if end_i and keys[i] == end_i: # если есть разница уже в ключе
+                    if end_i and keys[i] == end_i: # if diff in key already
                         length = len(json.dumps(e[keys[i]], ensure_ascii=False))
                         items.append([keys[i], sep])
-                # если необходимо посмотреть сразу на значение (скорее всего строковое)
+                # if have to look at the value first (string one)
                 elif e[keys[i]] is end_e and end_i is None:
                     found = True
                     length = len(json.dumps(e[keys[i]], ensure_ascii=False))
@@ -175,15 +176,15 @@ def find(
                     found = True
                     length = len(end_i[1:-1])
                     items.append([sep, None])
-                # иначе проверять значения
+                # else check values
                 else:
                     _e, _length = _recurse(e[keys[i]])
                     length = length or _length
                     items.append((keys[i], _e))
                 i += 1
             return dict(items), length
-        else:
-            return str(e) if e else None, length
+
+        return str(e) if e else None, length
 
     s, length = _recurse(e)
     offset = len(json.dumps(s, ensure_ascii=False).split(f'"{sep}"', 1)[0].rstrip('}]'))
@@ -245,7 +246,7 @@ def diff(
             for i,k,v in [[i,*x] for i,x in enumerate((e1 or {}).items())]:
                 try:
                     _k = [*e2.keys()][i]
-                except:
+                except IndexError:
                     _k = None
 
                 if not _k: # если ключа нет в прежней версии
@@ -270,38 +271,39 @@ def diff(
             try:
                 offset, length = find(path[0], *path[-2:])
                 _s = json.dumps(path[0], ensure_ascii=False)[offset:offset+length]
-            except:
+            except: #  TODO: fix bare except
                 pass
 
             _d = ()
             e1_dump = json.dumps(e1, ensure_ascii=False) if e1 else None
 
-            # Если было добавлено
+            #  TODO: more clear comments
+            # If was added
             if e1 is not None and e2 is None:
-                # Для списков при добавлении необходимо сослаться на предыдущий элем
+                # For lists on add should look on prev elem
                 if isinstance(path[-2], list):
                     offset, length = find(path[0], path[-2], len(path[-2])-1)
                 elif isinstance(path[-2], dict):
                     try:
                         _is_dict = isinstance(json.loads(path[-1]), dict)
-                    except:
+                    except json.JSONDecodeError:
                         _is_dict = False
                     if not _is_dict:
                         __e = path[-2][path[-1]]
                         path += [__e, [*__e][-1]]
                         offset, length = find(path[0], *path[-2:])
-                _d = (offset+length, offset+length, None, e1_dump)
+                _d = (offset+length, offset+length, e1_dump)
 
-            # Если было заменено
+            # If was replaced
             elif e1 is not None and e2 is not None:
                 if isinstance(path[-2], dict):
                     if re.match(r'\{\"[^\"]+\":.+', e1_dump):
                         e1_dump = e1_dump[1:-1]
-                _d = (offset, offset+length, _s, e1_dump)
+                _d = (offset, offset+length, e1_dump)
 
-            # Если было удалено
+            # If was removed
             elif e1 is None and e2 is not None:
-                _d = (offset, offset+length, _s, None)
+                _d = (offset, offset+length, None)
 
             if _d:
                 d.append(_d)
@@ -331,17 +333,17 @@ def apply_diff(html_or_str: t.Union[str, HtmlDict], changes: HtmlDiff) -> str:
         x.replace(' ', '').replace(',', '')
     ), ''][0].startswith('}')
 
-    for i, j, cur, res in changes.data[::-1]:
+    for i, j, res in changes.data[::-1]:
         # when removed in update
         if (s[:i].endswith(', ') or s[i:].startswith(', ')) and res is None:
             i -= 2
         # if need to trim ", " from left (when added in update)
-        if cur is None:
+        if i == j:
             # if cur is a dict unpacked in parent structure - trim curly braces
             try:
                 if isinstance(json.loads(res), dict) and _in_dict(s[i:]):
                     res = res[1:-1]
-            except:
+            except json.JSONDecodeError:
                 pass
             res = ', ' + res
         s = s[:i] + (res or '') + s[j:]

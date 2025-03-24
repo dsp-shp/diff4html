@@ -5,7 +5,8 @@ disable = [
     "line-too-long",
     "pointless-string-statement",
     "dangerous-default-value",
-    "unnecessary-lambda-assignment"
+    "unnecessary-lambda-assignment",
+    "consider-using-f-string"
 ]
 
 [tool.isort]

@@ -11,22 +11,11 @@ Struct = t.Union[dict, list, tuple]
 def prepare(s: str) -> str:
     """ Prepare HMTL source string
     
-    Remove all new lines, empty attribute values & redundant spaces and replace
-    all whitespaces (and '\xa0' too) in HTML string with Braille Blank (U+2800). 
-    Otherwise there will be troubles with comparing tokens in htmldiff function,
-    which actually is not used anymore, lol.
-    
+    Remove all new lines, empty attribute values & redundant spaces.
+
     """
     # remove new lines, empty attribute values & gaps between tags
-    s = s.replace('\n', '')
-    s = s.replace('=""', '')
-    s = re.sub(re.compile(r"\>[\ ]*\<"), "><", s)
-    # replace \xa0
-    for x in re.finditer(r"\>([^\<]+)\<", s):
-        y = x.group()
-        y = re.sub(re.compile(r"\>[\ ]*\<"), "><", y)
-        y = y.replace(" ", " ").replace("\xa0", " ")
-        s = s[:x.span()[0]] + y + s[x.span()[1]:]
+    s = re.sub(r"\>[\ ]*\<", "><", s.replace('\n', '').replace('=""', ''))
 
     return html.tostring(
         html.fromstring(s, parser=etree.HTMLParser(remove_comments=True)),
@@ -34,10 +23,7 @@ def prepare(s: str) -> str:
     )
 
 
-def get_tag(
-    e: html.HtmlElement,
-    f: t.Callable = lambda x: True
-) -> t.Optional[str]:
+def get_tag(e: html.HtmlElement, f: t.Callable = lambda x: True) -> t.Optional[str]:
     """ Get tag string
 
     Construct full tag str with all tag' parameters from lxml.HtmlElement &
@@ -49,9 +35,9 @@ def get_tag(
     attrs: list[str] = []
     for k,v in {
         **e.attrib,
-        "__prefix__": e.prefix or "", 
-        "__text__": e.text or "", 
-        "__tail__": e.tail or "",
+        **({"__pref__": e.prefix} if e.prefix else {}),
+        **({"__text__": e.text or ""} if e.text else {}),
+        **({"__tail__": e.tail or ""} if e.tail else {}),
     }.items():
         if not f(v):
             continue
@@ -62,23 +48,14 @@ def get_tag(
         else:
             attrs.append(str(k))
     s = e.tag + ' ' + " ".join(attrs)
-    if 'ulclass' in s:
-        print([e.tag, s])
     return s
 
 
-def lxml2json(
-    html_or_str: t.Union[html.HtmlElement, str],
-    ignore: set = {}, # {'defs', 'filter', 'g', 'path', 'script', 'symbol'},
-) -> dict:
-    """ Convert lxml HtmlElement tree into JSON 
+def lxml2json(html_or_str: t.Union[html.HtmlElement, str], ignore = ()) -> dict:
+    """ Cast lxml HtmlElement tree to JSON 
 
-    Args:
-        e: root of some HTML tree
-        ignore: set of tags to ignore when forming JSON
-
-    Returns:
-        dict: JSON formed from tree
+    Recursively convert lxml structure into JSON formed one. Pass ignore set to 
+    skip specific parts of the tree.
     
     """
     def _recurse(e: html.HtmlElement) -> dict:
@@ -118,38 +95,35 @@ def lxml2json(
 
 
 def json2lxml(d: t.Union[str, Struct]) -> html.HtmlElement:
-    """ Convert JSON into lxml HtmlElement tree
+    """ Cast JSON to lxml HtmlElement tree
     
-    Args:
-        d: some JSON in dict or serialized form
+    Recursively cast JSON structure to HTML-like string & pass it to fromstring 
+    lxml function to form HtmlElement instance.
 
-    Returns:
-        lxml.html.HtmlElement: root of HTML tree formed
-    
     """
     def _recurse(data: t.Any) -> str:
+        _data: list[tuple[str]] = []
+        # where each tuple has 4 elems: prefix, text, child element & tail
+
         if isinstance(data, list):
             _data = [("", "", x, "") for x in data]
         elif isinstance(data, dict):
-            _data = []
             for k,v in data.items():
-                # each tag has __(prefix|text|tail)__ attrs to be removed
-                try:
-                    # get back quotes, apostrophe & backquote
-                    for x in {'&quot;': '"', '&apos;': "'"}.items():
-                        k = k.replace(*x)
-                    prefix, text, tail = [x.replace('&#x60;', "`") for x in \
-                        re.findall(r'\_\_[^ =]+\_\_\=\`([^\`]*)\`', k)
-                    ]
-                    k = re.sub(r'\_\_[^ =]+\_\_\=\`[^\`]*\`', "", k).rstrip(' ')
-                except:
-                    prefix, text, tail = [""]*3
-                _data.append((
-                    prefix + f"<{k}>",
-                    text,
-                    v or '',
-                    ("" if HtmlTag(_t := k.split(' ', 1)[0]).single else f"</{_t}>") + tail
-                ))
+                # each tag has __(prefix|text|tail)__ attrs to be extracted
+                specials = {"prefix": "", "text": "", "tail": ""}
+                # get back quotes, apostrophe & backquote
+                for x in {'&quot;': '"', '&apos;': "'"}.items():
+                    k = k.replace(*x)
+                for x in re.findall(r'\_\_[^ =]+\_\_\=\`[^\`]*\`', k):
+                    _k, _v = x.split("=", 1)
+                    specials[_k[2:-2]] = _v[1:-1].replace('&#x60;', "`")
+                # then remove these attrs from key
+                k = re.sub(r'\_\_[^ =]+\_\_\=\`[^\`]*\`', "", k).rstrip(' ')
+
+                prefix, text, tail = specials.values()
+                _data.append((prefix + f"<{k}>", text, v or '', (
+                    "" if HtmlTag(_t := k.split(' ', 1)[0]).single else f"</{_t}>"
+                ) + tail))
         else:
             return str(data)
 
@@ -330,7 +304,7 @@ class HtmlTag(Enum):
 
     @classmethod
     def values(cls) -> list[str]:
-        """ ... """
+        """ Get all possible tags enlisted within Enum """
         return [x.value for x in cls]
 
     @classmethod
