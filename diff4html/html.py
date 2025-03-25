@@ -47,7 +47,7 @@ def get_tag(e: html.HtmlElement, f: t.Callable = lambda x: True) -> t.Optional[s
             attrs.append(str(k) + f"=`{v}`")
         else:
             attrs.append(str(k))
-    s = e.tag + ' ' + " ".join(attrs)
+    s = e.tag + (" " if attrs else "") + " ".join(attrs)
     return s
 
 
@@ -102,7 +102,7 @@ def json2lxml(d: t.Union[str, Struct]) -> html.HtmlElement:
 
     """
     def _recurse(data: t.Any) -> str:
-        _data: list[tuple[str]] = []
+        _data: list[tuple[str, str, t.Any, str]] = []
         # where each tuple has 4 elems: prefix, text, child element & tail
 
         if isinstance(data, list):
@@ -112,13 +112,13 @@ def json2lxml(d: t.Union[str, Struct]) -> html.HtmlElement:
                 # each tag has __(prefix|text|tail)__ attrs to be extracted
                 specials = {"prefix": "", "text": "", "tail": ""}
                 # get back quotes, apostrophe & backquote
-                for x in {'&quot;': '"', '&apos;': "'"}.items():
+                for x in {"&quot;": '"', "&apos;": "'"}.items():
                     k = k.replace(*x)
-                for x in re.findall(r'\_\_[^ =]+\_\_\=\`[^\`]*\`', k):
+                for x in re.findall(r"\_\_[^ =]+\_\_\=\`[^\`]*\`", k):
                     _k, _v = x.split("=", 1)
-                    specials[_k[2:-2]] = _v[1:-1].replace('&#x60;', "`")
+                    specials[_k[2:-2]] = _v[1:-1].replace("&#x60;", "`")
                 # then remove these attrs from key
-                k = re.sub(r'\_\_[^ =]+\_\_\=\`[^\`]*\`', "", k).rstrip(' ')
+                k = re.sub(r"\_\_[^ =]+\_\_\=\`[^\`]*\`", "", k).rstrip(' ')
 
                 prefix, text, tail = specials.values()
                 _data.append((prefix + f"<{k}>", text, v or '', (

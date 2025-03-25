@@ -6,20 +6,24 @@ long_description = open("README.md", "r", -1, "utf8").read() if path.exists('REA
 
 setup(
     name="diff4html",
-    version="0.0.0",
+    url="https://github.com/dsp-shp/diff4html",
+    project_urls={
+        "Source Code": "https://github.com/dsp-shp/diff4html",
+    },
     author="Ivan Derkach",
     author_email="dsp_shp@icloud.com",
-    description="HTML to python dict converter",
+    description="Tools for converting HTMLs to dicts & calculating diff between them",
     long_description=long_description,
     long_description_content_type="text/markdown",
     license="MIT",
     license_files=("LICENSE.txt",),
-    url="https://github.com/dsp-shp/diff4html",
+    use_scm_version=True,
+    setup_requires=['setuptools_scm'],
     packages=find_packages(exclude=["tests", "tests.*"]),
     package_data={"": ["examples/**"]},
-    python_requires=">=3.7",
+    python_requires=">=3.11",
     install_requires=[
-        "lxml",
+        "lxml==5.3.1",
     ],
     extras_require={
         "dev": [
@@ -34,7 +38,6 @@ setup(
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: MIT Software License",
         "Operating System :: OS Independent",
-        "Programming Language :: SQL",
         "Programming Language :: Python :: 3 :: Only",
     ],
 )

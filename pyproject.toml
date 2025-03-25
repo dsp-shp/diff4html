@@ -8,8 +8,3 @@ disable = [
     "unnecessary-lambda-assignment",
     "consider-using-f-string"
 ]
-
-[tool.isort]
-src_paths = ["scraby", "tests"]
-
-

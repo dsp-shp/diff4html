@@ -10,7 +10,14 @@ from lxml import html
 
 
 class HtmlDiff(UserList):
-    """ ... """
+    """ HtmlDiff
+
+    HtmlDiff, in the context of page 2 - page 1, is a list of changes in the 
+    form of (s, e, t), where s and e are the start and end indices pointing to 
+    the differing element in page 1, and t is the content of the corresponding 
+    differing element in page 2.
+
+    """
 
     data: list[tuple[int, int, str, str]]
     """ Data structure """
@@ -28,29 +35,37 @@ class HtmlDiff(UserList):
 
     def __repr__(self) -> str:
         """ Print in JSON format"""
-        return json.dumps(
-            self.data, indent=4, ensure_ascii=False
-        ).replace('\\"', '')
+        return "%s([\n%s\n])" % (
+            self.__class__.__name__,
+            ',\n'.join(['    %s:%s: %s' % (
+                x, y, (json.dumps(z, ensure_ascii=False) if z else None)
+            ) for x,y,z in self.data
+        ]))
 
 
 class HtmlDict(UserDict, object):
-    """ ... """
+    """ HtmlDict
+
+    A representation of HTML tree built on native Python dict & list data types.
+
+    """
 
     data: dict
-    """ Data structure """
+    """ Data structure of UserDict """
 
     _source: t.Optional[str]
     """ Source string used to init object """
 
-    def __init__(self, *args, xpath: t.Optional[str] = None, **kwargs) -> None:
+    def __init__(self, *args, **kwargs):
+        #  TODO: add xpath kwarg handling
         if len(args) == 1 and isinstance(args[0], str):
             self._source = args[0]
-            args, source = (), html.fromstring(prepare(self._source))
-            if xpath:
-                source = source.xpath(xpath)[0]
+            args, kwargs = (), lxml2json(
+                html.fromstring(prepare(self._source))
+            )
         else:
             self._source = None
-        super().__init__(*args, **lxml2json(source))
+        super().__init__(*args, **kwargs)
 
     def __eq__(self, other: t.Self) -> bool:
         if not isinstance(other, self.__class__):
@@ -109,33 +124,22 @@ def find(
     end_e: t.Any,
     end_i: t.Optional[t.Any] = None
 ) -> tuple[int, int]:
-    """ Find the start & end string indexes of the desired element in some structure' dump
+    """ Find the element position in structure dump
 
-    The function needs a parent node and...
+    Find start & end string indexes of the desired element in a structure dump
+    with the whole dict object, a parent node and ...
     - a key, if the current node is a dictionary and should return a value
     - an element num, if the current node is a list and should return an element
     - the whole node dump, if the entire node should be returned
-
-    Parameters:
-        e (t.Any): root of the structure
-        end_e (t.Any): parent node of the desired element
-        end_i (str|int): specific pointer to the element
-        sep (str): случайный разделитель по которому можно отсечь правую часть для поиска начального индекса
-
-    Returns:
-        tuple[int, int]: start & end indexes
-    
+ 
     """
 
     sep: str = str(uuid4())
-    """ Random separator that can be used to cut off the right side to search for the initial index """
+    """ Random separator used to cut off the right side to search for the index """
 
     def _recurse(e: t.Any) -> tuple[t.Any, int]:
         """ Process recursively 
 
-        Returns:
-            tuple[t.Any, int]: any structure with separator inserted & length of selected element
-        
         """
         found: bool = False
         """ Flag to indicate that desired node has been found """
@@ -219,7 +223,7 @@ def diff(
         if e1 is None and e2 is None:
             return
 
-        # Сохраним словарь в корне рекурсии
+        # Save the dict on a recursion root step
         if path is None:
             if not isinstance(e2, dict) or not e2:
                 raise Exception('Dict structure with at least one key expected')
@@ -249,9 +253,9 @@ def diff(
                 except IndexError:
                     _k = None
 
-                if not _k: # если ключа нет в прежней версии
+                if not _k: # if the key is missing in prev version
                     _recurse({k:v}, None, path=[*path])
-                elif k != _k: # если ключи не совпадают
+                elif k != _k: # if keys differ
                     _recurse({k:v}, _k, path=[*path, e2, json.dumps({_k:e2[_k]}, ensure_ascii=False)])
                     _keys.append(_k)
                 else:
