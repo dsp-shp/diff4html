@@ -38,14 +38,14 @@ In [1]: import requests
             </html>
         """)
         page_2
-Out[1]: <HtmlDict({...})>
+Out[1]: HtmlDict({...})
 ```
 
 Let's then calculate diff between them. For example: I don't want to store the whole page 2 source code and want only delta to remain.
 ```python
 In [2]: diff = page_2 - page_1
         diff
-Out[2]: <HtmlDiff([...])>
+Out[2]: HtmlDiff([...])
 ```
 What this code does is it determines which parts of page 1 were deleted, modified, and added in page 2, and returns information about all these changes in the form of an HtmlDiff object.
 
@@ -61,7 +61,7 @@ Out[3]: True
 
 BTW: there is a hash mechanism under the hood that protects the delta to be applied to any random html:
 ```python
-In [4]: diff + page_2 # diff can be applied to page_1 only
+In [4]: page_2 + diff # diff can be applied to page_1 only
 Out[4]: ValueError: wrong snapshot used for applying diff
 ```
 
