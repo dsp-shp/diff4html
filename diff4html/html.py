@@ -2,6 +2,7 @@ import json
 import re
 import typing as t
 from enum import Enum
+from warnings import warn
 
 from lxml import etree, html
 
@@ -154,7 +155,10 @@ def validate(s: str) -> bool:
 
     """
     _ = lambda x: html.tostring(x, encoding='unicode')
-    return _(json2lxml(lxml2json(s))) == _(html.fromstring(prepare(s)))
+    return _(json2lxml(lxml2json(s))) == _(html.fromstring(prepare(s))) or warn(
+        "the result of converting the received object " + \
+        "back to lxml object does not match the source one"
+    ) or False
 
 
 #  TODO: possibly remove this enum?

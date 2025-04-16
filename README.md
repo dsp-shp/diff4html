@@ -15,20 +15,19 @@ pip install diff4html
 ```
 
 ### ⚡️ Usage
-Let's start with running IPython or Jupyter and making two HtmlDicts for our pages. The one for an example.org page and the other for slightly modified version of it:
+Let's start with running IPython or Jupyter and making two HtmlDicts for our pages. The one for an example.org page with `<head>` tag ignored and the other for slightly modified version of it:
 > **HtmlDict** here is simply a representation of HTML tree built on native Python dict & list data types.
 
 ```python
 In [1]: import requests
         from diff4html import HtmlDict
 
-        page_1 = HtmlDict(requests.get("https://example.org").text)
+        page_1 = HtmlDict(
+            requests.get("https://example.org").text,
+            ignore=["head"] # NOTICE: we ignore <head>...</head> part here
+        )
         page_2 = HtmlDict("""
             <html>
-                <head>
-                    <title>Example Domain</title>
-                    <!-- NOTICE: missing meta & styles here -->
-                </head>
                 <body>
                     <div>
                         <h1>Example Domain modified</hi> <!-- NOTICE: changed text-->
@@ -45,11 +44,14 @@ Let's then calculate diff between them. For example: I don't want to store the w
 ```python
 In [2]: diff = page_2 - page_1
         diff
+/.../diff4html/diff.py: UserWarning: ignored tags of both objects don't match
 Out[2]: HtmlDiff([...])
 ```
 What this code does is it determines which parts of page 1 were deleted, modified, and added in page 2, and returns information about all these changes in the form of an HtmlDiff object.
 
 >**HtmlDiff**, in the context of page 2 - page 1, is a list of changes in the form of (`s`, `e`, `t`), where `s` and `e` are the start and end indices pointing to the differing element in page 1, and `t` is the content of the corresponding differing element in page 2.
+
+Also note that a warning is displayed along with the result, indicating that both objects contain different sets of ignored tags. This happened because when creating page_1, we ignored the `<head>` tag, while when creating page_2, we didn’t specify any tags to ignore at all.
 
 If one day I want to restore the entire source code of the page 2 I can do the following. We can check their equality right away:
 ```python
@@ -59,7 +61,7 @@ In [3]: page_2_restored = page_1 + diff # you can think of it as:
 Out[3]: True
 ```
 
-BTW: there is a hash mechanism under the hood that protects the delta to be applied to any random html:
+By the way, there is a hash mechanism under the hood that protects the delta to be applied to any random html:
 ```python
 In [4]: page_2 + diff # diff can be applied to page_1 only
 Out[4]: ValueError: wrong snapshot used for applying diff

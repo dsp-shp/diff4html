@@ -6,10 +6,11 @@ import typing as t
 from collections import UserDict, UserList
 from textwrap import shorten
 from uuid import uuid4
+from warnings import warn
 
 from lxml import html
 
-from diff4html.html import json2lxml, lxml2json, prepare
+from diff4html.html import json2lxml, lxml2json, prepare, validate
 
 
 class HtmlDiff(UserList):
@@ -73,12 +74,19 @@ class HtmlDict(UserDict, object):
     _source: t.Optional[str]
     """ Source string used to init object """
 
-    def __init__(self, *args, **kwargs):
+    _ignore: t.Collection
+    """ List of ignored tags """
+
+    def __init__(self, *args, ignore: t.Collection = (), **kwargs):
         #  TODO: add xpath kwarg handling
         if len(args) == 1 and isinstance(args[0], str):
             self._source = args[0]
+            self._ignore = ignore or tuple()
+            # check if object converted back to lxml matches the source one
+            validate(self._source)
+
             args, kwargs = (), lxml2json(
-                html.fromstring(prepare(self._source))
+                html.fromstring(prepare(self._source)), ignore=ignore
             )
         else:
             self._source = None
@@ -130,6 +138,8 @@ class HtmlDict(UserDict, object):
                     other.__class__.__name__
                 )
             )
+        if set(self._ignore) ^ set(other._ignore):
+            warn("ignored tags of both objects don't match")
         return diff(self, other)
 
     def to_lxml(self) -> html.HtmlElement:
