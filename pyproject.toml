@@ -6,5 +6,6 @@ disable = [
     "pointless-string-statement",
     "dangerous-default-value",
     "unnecessary-lambda-assignment",
-    "consider-using-f-string"
+    "consider-using-f-string",
+    "unidiomatic-typecheck"
 ]

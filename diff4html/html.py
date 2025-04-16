@@ -115,7 +115,7 @@ def json2lxml(d: t.Union[str, Struct]) -> html.HtmlElement:
                 for x in {"&quot;": '"', "&apos;": "'"}.items():
                     k = k.replace(*x)
                 for x in re.findall(r"\_\_[^ =]+\_\_\=\`[^\`]*\`", k):
-                    _k, _v = x.split("=", 1)
+                    _k, _v = x.split("=", 1) # type: ignore
                     specials[_k[2:-2]] = _v[1:-1].replace("&#x60;", "`")
                 # then remove these attrs from key
                 k = re.sub(r"\_\_[^ =]+\_\_\=\`[^\`]*\`", "", k).rstrip(' ')
@@ -131,7 +131,9 @@ def json2lxml(d: t.Union[str, Struct]) -> html.HtmlElement:
         return res
 
     # if given dict - serialize it in str dump first
-    s: str = json.dumps(d, ensure_ascii=False) if isinstance(d, Struct) else d
+    s: str = json.dumps(
+        d, ensure_ascii=False
+    ) if isinstance(d, Struct) else d # type: ignore
 
     # return back all doublequotes (were replaced with backtick)
     for x in re.finditer(r'[^\_ =]+\=(\`[^\`]*\`)', s):

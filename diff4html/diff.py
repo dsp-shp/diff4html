@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import re
 import typing as t
@@ -5,8 +7,9 @@ from collections import UserDict, UserList
 from textwrap import shorten
 from uuid import uuid4
 
-from diff4html.html import json2lxml, lxml2json, prepare
 from lxml import html
+
+from diff4html.html import json2lxml, lxml2json, prepare
 
 
 class HtmlDiff(UserList):
@@ -19,7 +22,7 @@ class HtmlDiff(UserList):
 
     """
 
-    data: list[tuple[int, int, str, str]]
+    data: list[tuple[int, int, str]]
     """ Data structure """
 
     _sub_hash: int
@@ -41,6 +44,20 @@ class HtmlDiff(UserList):
                 x, y, (json.dumps(z, ensure_ascii=False) if z else None)
             ) for x,y,z in self.data
         ]))
+
+    def __add__(self, other: HtmlDict) -> HtmlDict:
+        """ Apply HtmlDiff delta to HtmlDict """
+        if not isinstance(other, HtmlDict):
+            raise TypeError(
+                "unsupported operand type(s) for +: 'HtmlDiff' and '%s'" % (
+                    other.__class__.__name__
+                )
+            )
+        if hash(other) != self._sub_hash:
+            raise ValueError(
+                "wrong snapshot used for applying diff"
+            )
+        return HtmlDict(**json.loads(apply_diff(other, self)))
 
 
 class HtmlDict(UserDict, object):
@@ -67,7 +84,7 @@ class HtmlDict(UserDict, object):
             self._source = None
         super().__init__(*args, **kwargs)
 
-    def __eq__(self, other: t.Self) -> bool:
+    def __eq__(self, other: t.Self) -> bool: # type: ignore
         if not isinstance(other, self.__class__):
             raise TypeError(
                 "unsupported operand type(s) for -: 'HtmlDict' and '%s'" % (
@@ -137,7 +154,7 @@ def find(
     sep: str = str(uuid4())
     """ Random separator used to cut off the right side to search for the index """
 
-    def _recurse(e: t.Any) -> tuple[t.Any, int]:
+    def _recurse(e: t.Any) -> tuple[t.Any, t.Optional[int]]:
         """ Process recursively 
 
         """
@@ -191,7 +208,9 @@ def find(
         return str(e) if e else None, length
 
     s, length = _recurse(e)
-    offset = len(json.dumps(s, ensure_ascii=False).split(f'"{sep}"', 1)[0].rstrip('}]'))
+    if length is None:
+        raise ValueError("couldn't find element in a struct")
+    offset = len(json.dumps(s, ensure_ascii=False).split(f'"{sep}"', 1)[0].rstrip("}]"))
 
     return offset, length
 
@@ -200,14 +219,9 @@ def diff(
     e1: t.Union[dict, HtmlDict],
     e2: t.Union[dict, HtmlDict]
 ) -> HtmlDiff:
-    """ Get changes between two HTML dicts
+    """ Get changes between two HTML dicts """
 
-    Returns:
-        HtmlDiff: difference object  
-    
-    """
-
-    d: list[tuple[int, int, str, str]] = []
+    d: list[tuple[int, int, t.Optional[str]]] = []
     """ List to accumulate found changes here """
 
     def _recurse(e1: t.Any, e2: t.Any, path: list = []) -> None:
@@ -226,7 +240,7 @@ def diff(
         # Save the dict on a recursion root step
         if path is None:
             if not isinstance(e2, dict) or not e2:
-                raise Exception('Dict structure with at least one key expected')
+                raise ValueError("dict structure with at least one key expected")
             path = [e2, list(e2)[0]]
 
         # If e1 & e2 types differ then this is a final diff
@@ -278,7 +292,7 @@ def diff(
             except: #  TODO: fix bare except
                 pass
 
-            _d = ()
+            _d: tuple[int, int, t.Optional[str]] = tuple() # type: ignore
             e1_dump = json.dumps(e1, ensure_ascii=False) if e1 else None
 
             #  TODO: more clear comments
@@ -301,7 +315,7 @@ def diff(
             # If was replaced
             elif e1 is not None and e2 is not None:
                 if isinstance(path[-2], dict):
-                    if re.match(r'\{\"[^\"]+\":.+', e1_dump):
+                    if e1_dump and re.match(r'\{\"[^\"]+\":.+', e1_dump):
                         e1_dump = e1_dump[1:-1]
                 _d = (offset, offset+length, e1_dump)
 
@@ -321,7 +335,7 @@ def diff(
     return HtmlDiff(d, sub=e2)
 
 
-def apply_diff(html_or_str: t.Union[str, HtmlDict], changes: HtmlDiff) -> str:
+def apply_diff(html_or_str: t.Union[str, HtmlDict], diff: HtmlDiff) -> str:
     """ Apply changes
 
     Restore page snapshot with source code & delta.
@@ -331,15 +345,15 @@ def apply_diff(html_or_str: t.Union[str, HtmlDict], changes: HtmlDiff) -> str:
 
     # check if specific change is in dict scope - inside
     _in_dict: t.Callable = lambda x: _in_dict(_) if (
-        _ := re.sub(r'\{[^\}\{]+\}', '', x)
+        _ := re.sub(r"\{[^\}\{]+\}", "", x)
     ) != x else [*re.findall(
-        r'[\}|\(|\)|\]|\ \,]\}+',
-        x.replace(' ', '').replace(',', '')
-    ), ''][0].startswith('}')
+        r"[\}|\(|\)|\]|\ \,]\}+",
+        x.replace(" ", "").replace(",", "")
+    ), ""][0].startswith("}")
 
-    for i, j, res in changes.data[::-1]:
+    for i, j, res in diff.data[::-1]:
         # when removed in update
-        if (s[:i].endswith(', ') or s[i:].startswith(', ')) and res is None:
+        if (s[:i].endswith(", ") or s[i:].startswith(", ")) and res is None:
             i -= 2
         # if need to trim ", " from left (when added in update)
         if i == j:
@@ -349,7 +363,7 @@ def apply_diff(html_or_str: t.Union[str, HtmlDict], changes: HtmlDiff) -> str:
                     res = res[1:-1]
             except json.JSONDecodeError:
                 pass
-            res = ', ' + res
-        s = s[:i] + (res or '') + s[j:]
+            res = ", " + res
+        s = s[:i] + (res or "") + s[j:]
 
     return s
