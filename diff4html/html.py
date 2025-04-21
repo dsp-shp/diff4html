@@ -111,7 +111,7 @@ def json2lxml(d: t.Union[str, Struct]) -> html.HtmlElement:
         elif isinstance(data, dict):
             for k,v in data.items():
                 # each tag has __(prefix|text|tail)__ attrs to be extracted
-                specials = {"prefix": "", "text": "", "tail": ""}
+                specials = {"pref": "", "text": "", "tail": ""}
                 # get back quotes, apostrophe & backquote
                 for x in {"&quot;": '"', "&apos;": "'"}.items():
                     k = k.replace(*x)
@@ -137,12 +137,13 @@ def json2lxml(d: t.Union[str, Struct]) -> html.HtmlElement:
     ) if isinstance(d, Struct) else d # type: ignore
 
     # return back all doublequotes (were replaced with backtick)
-    for x in re.finditer(r'[^\_ =]+\=(\`[^\`]*\`)', s):
-        if "&quot;" in x.group():
-            # use apostrophe if doublequote found inside attr
-            s = s.replace(x.group(), x.group().replace('`', "'"))
-            continue
-        s = s.replace(x.group(), x.group().replace('`', '\\"'))
+    for x in sorted(re.findall(r"([^\ =]+\=\`[^\`]*\`)", s), reverse=True):
+        if not re.match(r"__.+__", x.split("=", 1)[0]):
+            if "&quot;" in x:
+                # use apostrophe if doublequote found inside attr
+                s = s.replace(x, x.replace('`', "'"))
+                continue
+            s = s.replace(x, x.replace('`', '\\"'))
 
     return html.fromstring(_recurse(json.loads(s)))
 

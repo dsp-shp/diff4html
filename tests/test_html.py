@@ -3,8 +3,9 @@ from dataclasses import dataclass, field
 
 import pytest
 import requests
-from diff4html.html import get_tag, validate
 from lxml import html
+
+from diff4html.html import get_tag, validate
 
 
 @dataclass
@@ -52,7 +53,7 @@ def test_tag_parse(case):
 @pytest.mark.parametrize("case", [
     Test(x, f"https://{x.strip()}", None) for x in [
         "example.org",
-        "4chan.org  ",
+        "2ch.hk     ",
         "ebay.com   ",
         "google.com ",
         "youtube.com",
