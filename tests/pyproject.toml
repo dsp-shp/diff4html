@@ -1,0 +1,10 @@
+[project]
+name = "diff4html-tests"
+description = "Tests for diff4html"
+requires-python = ">=3.11"
+dependencies = [
+    "lxml==5.3.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]

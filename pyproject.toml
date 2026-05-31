@@ -1,11 +1,48 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "diff4html"
+description = "Tools for converting HTMLs to dicts & calculating diff between them"
+dynamic = ["version"]
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Ivan Derkach", email = "dsp_shp@icloud.com"},
+]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = [
+    "lxml==5.3.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/dsp-shp/diff4html"
+"Source Code" = "https://github.com/dsp-shp/diff4html"
+
+[tool.setuptools.packages.find]
+exclude = ["tests*"]
+
+[tool.setuptools.package-data]
+"*" = ["examples/**"]
+
+[tool.setuptools_scm]
+
 [tool.pylint.messages_control]
 disable = [
-    "missing-module-docstring", 
-    "missing-function-docstring", 
+    "missing-module-docstring",
+    "missing-function-docstring",
     "line-too-long",
     "pointless-string-statement",
     "dangerous-default-value",
     "unnecessary-lambda-assignment",
     "consider-using-f-string",
-    "unidiomatic-typecheck"
+    "unidiomatic-typecheck",
 ]

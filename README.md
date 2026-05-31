@@ -73,3 +73,6 @@ In [5]: page_2_restored.to_lxml()
 Out[5]: <Element div at 0x000000000>
 ```
 
+### 🗒️ TODO
+* Make hashing not randomized each time with sha256/md5/...
+* Save sub hash sums within `HtmlDiff` object at serialization
