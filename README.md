@@ -76,3 +76,5 @@ Out[5]: <Element div at 0x000000000>
 ### 🗒️ TODO
 * Make hashing not randomized each time with sha256/md5/...
 * Save sub hash sums within `HtmlDiff` object at serialization
+* Add CLI
+* Add CLI diff pretty output (colored less-like)
