@@ -7,6 +7,7 @@ from collections import UserDict, UserList
 from textwrap import shorten
 from uuid import uuid4
 from warnings import warn
+from zlib import crc32
 
 from lxml import html
 
@@ -21,17 +22,22 @@ class HtmlDiff(UserList):
     the differing element in page 1, and t is the content of the corresponding 
     differing element in page 2.
 
+    Last element of the list is a subtrahend hash to validate further apply.
+
     """
 
-    data: list[tuple[int, int, str]]
+    data: list[tuple[int, int, str], int]
     """ Data structure """
 
-    _sub_hash: int
-    """ Subtrahend hash sum to validate further appliement """
+    @property
+    def sub_hash(self) -> int:
+        """ Get subtrahend hash sum """
+        return self.data[-1]
 
-    def __init__(self, *args, sub) -> None:
-        self._sub_hash = hash(sub)
-        super().__init__(*args)
+    def __init__(self, initlist) -> None:
+        if not isinstance(initlist[-1], int):
+            initlist.append(0)
+        super().__init__(initlist)
 
     def __str__(self) -> str:
         """ Serialize to JSON dump """
@@ -54,7 +60,7 @@ class HtmlDiff(UserList):
                     other.__class__.__name__
                 )
             )
-        if hash(other) != self._sub_hash:
+        if self.sub_hash != 0 and hash(other) != self.sub_hash:
             raise ValueError(
                 "wrong snapshot used for applying diff"
             )
@@ -103,7 +109,7 @@ class HtmlDict(UserDict, object):
 
     def __hash__(self) -> int:
         """ Get hash sum """
-        return str.__hash__(str(self))
+        return crc32(str(self).encode("utf-8"))
 
     def __str__(self) -> str:
         """ Serialize to JSON dump """
@@ -124,7 +130,7 @@ class HtmlDict(UserDict, object):
                     other.__class__.__name__
                 )
             )
-        if hash(self) != other._sub_hash:
+        if other.sub_hash != 0 and hash(self) != other.sub_hash:
             raise ValueError(
                 "wrong snapshot used for applying diff"
             )
@@ -342,7 +348,7 @@ def diff(
         e1.data if isinstance(e1, HtmlDict) else e1,
         e2.data if isinstance(e2, HtmlDict) else e2,
     )
-    return HtmlDiff(d, sub=e2)
+    return HtmlDiff(d + [hash(e2)])
 
 
 def apply_diff(html_or_str: t.Union[str, HtmlDict], diff: HtmlDiff) -> str:
@@ -361,7 +367,7 @@ def apply_diff(html_or_str: t.Union[str, HtmlDict], diff: HtmlDiff) -> str:
         x.replace(" ", "").replace(",", "")
     ), ""][0].startswith("}")
 
-    for i, j, res in diff.data[::-1]:
+    for i, j, res in diff.data[:-1][::-1]:
         # when removed in update
         if (s[:i].endswith(", ") or s[i:].startswith(", ")) and res is None:
             i -= 2
